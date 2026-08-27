@@ -4,7 +4,7 @@ from typing import List, Optional
 import numpy as np
 import cv2
 
-from src.filters import ImageFilter
+from filters import ImageFilter
 from src.raw_loader import RawLoader
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - [%(levelname)s] - %(message)s")
