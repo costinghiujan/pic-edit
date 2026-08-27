@@ -1,0 +1,63 @@
+# PicEdit - RAW Photo Editor
+
+A lightweight, high-performance desktop RAW photo editor built with Python, PySide6 (Qt), OpenCV, and LibRaw (rawpy). Designed for modularity, clean architecture, and real-time interactive adjustments.
+
+---
+
+## Current Features
+
+- **High-Performance RAW Pipeline:** Fast decoding of RAW files (Canon `.CR2`) using a dual-resolution approach (downscaled proxy buffer for real-time preview, native full-resolution for export).
+- **LUT-Accelerated Tone Engine:** Sub-millisecond tonal processing using precomputed Look-Up Tables (`cv2.LUT`) throttled at ~60 FPS.
+- **General Adjustments:**
+  - Exposure Compensation ($\pm 2.0\text{ EV}$)
+  - Contrast Adjustment
+  - Highlights & Shadows Recovery
+  - Whites & Blacks Point Anchoring
+- **Interactive Tone Curves & Histogram:**
+  - Master RGB and individual R, G, B channel spline manipulation.
+  - Live real-time background luminance and color histogram.
+  - Dynamic control point management (click to add, drag to adjust, double-click to reset).
+- **Responsive Workspace Canvas:**
+  - Smooth pan and zoom centered at cursor position.
+  - Quick keyboard shortcuts:
+    - `Space` (hold): Instant Before/After (Original vs. Edited) comparison.
+    - `R`: Fit-to-screen view reset.
+- **Collapsible Control Panels:** Expandable/collapsible accordion layout with per-section reset actions and double-click slider resets.
+- **Export:** High-quality full-resolution JPEG export.
+
+---
+
+## Architecture & Design Patterns
+
+The codebase follows **SOLID** principles and clean architecture practices:
+- **Strategy Pattern (`ImageFilter`):** Decoupled image processing operations located in `src/filters/` (`general/` and `curves/`).
+- **Single Responsibility (`RawLoader`, `ImageEngine`):** Strict boundary between raw sensor decoding, pipeline state management, and UI rendering.
+- **Asynchronous & Throttled UI:** Decoupled input capture from frame rendering using timer debouncing.
+
+---
+
+## Project Structure
+
+```text
+pic-edit/
+├── src/
+│   ├── filters/
+│   │   ├── base.py
+│   │   ├── general/
+│   │   │   ├── exposure.py
+│   │   │   ├── contrast.py
+│   │   │   ├── highlights.py
+│   │   │   ├── shadows.py
+│   │   │   ├── whites.py
+│   │   │   ├── blacks.py
+│   │   │   └── tone_adjustments.py
+│   │   └── curves/
+│   │       └── curves_filter.py
+│   ├── collapsible_section.py
+│   ├── curve_widget.py
+│   ├── engine.py
+│   ├── raw_loader.py
+│   └── ui_main.py
+├── main.py
+├── requirements.txt
+└── README.md

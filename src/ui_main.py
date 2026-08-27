@@ -13,14 +13,11 @@ from PySide6.QtGui import (
 
 from src.engine import ImageEngine
 from src.collapsible_section import CollapsibleSection
-from src.filters import ToneAdjustmentsFilter
+from src.curve_widget import CurveEditorWidget
+from src.filters import ToneAdjustmentsFilter, CurvesFilter
 
 
 class ResetableSlider(QSlider):
-    """
-    A QSlider that resets to a default value upon double click.
-    """
-
     def __init__(self, orientation: Qt.Orientation, default_value: int = 0, parent: QWidget = None):
         super().__init__(orientation, parent)
         self.default_value = default_value
@@ -34,10 +31,6 @@ class ResetableSlider(QSlider):
 
 
 class ImageCanvas(QGraphicsView):
-    """
-    High-performance canvas supporting zoom, pan, and fit-to-view.
-    """
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.scene = QGraphicsScene(self)
@@ -105,11 +98,10 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Raw Photo Editor")
-        self.resize(1150, 750)
+        self.resize(1200, 800)
 
         self.engine = ImageEngine()
 
-        # 60 FPS Render Throttle Timer
         self._render_timer = QTimer(self)
         self._render_timer.setSingleShot(True)
         self._render_timer.setInterval(16)
@@ -151,7 +143,7 @@ class MainWindow(QMainWindow):
 
         # Right: Scrollable Sidebar
         sidebar_scroll = QScrollArea(self)
-        sidebar_scroll.setFixedWidth(300)
+        sidebar_scroll.setFixedWidth(310)
         sidebar_scroll.setWidgetResizable(True)
         sidebar_scroll.setFrameShape(QFrame.Shape.NoFrame)
         sidebar_scroll.setStyleSheet("background-color: #1e1e1e;")
@@ -161,10 +153,18 @@ class MainWindow(QMainWindow):
         self.sidebar_layout.setContentsMargins(0, 0, 0, 0)
         self.sidebar_layout.setSpacing(10)
 
-        # --- Section: General with Reset button in header ---
+        # 1. General Section
         self.general_section = CollapsibleSection("General", on_reset=self._reset_and_apply_general, parent=self)
         self._build_general_controls()
         self.sidebar_layout.addWidget(self.general_section)
+
+        # 2. Curves Section
+        self.curves_section = CollapsibleSection("Curves", on_reset=self._reset_and_apply_curves, parent=self)
+        self.curve_editor = CurveEditorWidget(self)
+        self.curve_editor.setEnabled(False)
+        self.curve_editor.curveChanged.connect(self._on_curve_changed)
+        self.curves_section.add_widget(self.curve_editor)
+        self.sidebar_layout.addWidget(self.curves_section)
 
         self.sidebar_layout.addStretch()
 
@@ -225,7 +225,6 @@ class MainWindow(QMainWindow):
         return reply == QMessageBox.StandardButton.Yes
 
     def _reset_controls(self) -> None:
-        """Resets sliders and labels to defaults without triggering renders."""
         controls = [
             (self.exposure_slider, self.exposure_label, "Exposure: 0.00 EV"),
             (self.contrast_slider, self.contrast_label, "Contrast: 1.00x"),
@@ -241,14 +240,21 @@ class MainWindow(QMainWindow):
             label.setText(default_text)
             slider.blockSignals(False)
 
+        self.curve_editor.reset()
+
     def _reset_and_apply_general(self) -> None:
-        """Called by the Reset button in General section header."""
         if not self.engine.has_image:
             return
         self._reset_controls()
         self._execute_pipeline_update()
 
-    def _set_sliders_enabled(self, enabled: bool) -> None:
+    def _reset_and_apply_curves(self) -> None:
+        if not self.engine.has_image:
+            return
+        self.curve_editor.reset()
+        self._execute_pipeline_update()
+
+    def _set_ui_enabled(self, enabled: bool) -> None:
         self.exposure_slider.setEnabled(enabled)
         self.contrast_slider.setEnabled(enabled)
         self.highlights_slider.setEnabled(enabled)
@@ -256,6 +262,9 @@ class MainWindow(QMainWindow):
         self.whites_slider.setEnabled(enabled)
         self.blacks_slider.setEnabled(enabled)
         self.general_section.set_reset_enabled(enabled)
+
+        self.curve_editor.setEnabled(enabled)
+        self.curves_section.set_reset_enabled(enabled)
 
     def _handle_import(self) -> None:
         if not self._confirm_discard_changes():
@@ -272,11 +281,12 @@ class MainWindow(QMainWindow):
 
         if self.engine.load(file_path):
             self._reset_controls()
-            self._set_sliders_enabled(True)
+            self._set_ui_enabled(True)
             self.export_action.setEnabled(True)
 
             preview = self.engine.update_pipeline([], is_modified=False)
             self.canvas.set_numpy_image(preview)
+            self.curve_editor.set_histogram_image(preview)
         else:
             QMessageBox.critical(self, "Error", f"Failed to load image: {file_path}")
 
@@ -301,6 +311,12 @@ class MainWindow(QMainWindow):
         if not self._render_timer.isActive():
             self._render_timer.start()
 
+    def _on_curve_changed(self) -> None:
+        if not self.engine.has_image:
+            return
+        if not self._render_timer.isActive():
+            self._render_timer.start()
+
     def _execute_pipeline_update(self) -> None:
         ev_val = self.exposure_slider.value() / 10.0
         contrast_val = 1.0 + (self.contrast_slider.value() / 100.0)
@@ -308,6 +324,8 @@ class MainWindow(QMainWindow):
         shadows_val = self.shadows_slider.value() / 100.0
         whites_val = self.whites_slider.value() / 100.0
         blacks_val = self.blacks_slider.value() / 100.0
+
+        curve_points = self.curve_editor.get_points()
 
         pipeline = [
             ToneAdjustmentsFilter(
@@ -317,10 +335,11 @@ class MainWindow(QMainWindow):
                 shadows=shadows_val,
                 whites=whites_val,
                 blacks=blacks_val,
-            )
+            ),
+            CurvesFilter(channel_points=curve_points),
         ]
 
-        has_changes = any([
+        has_general_changes = any([
             ev_val != 0.0,
             self.contrast_slider.value() != 0,
             highlights_val != 0.0,
@@ -328,8 +347,9 @@ class MainWindow(QMainWindow):
             whites_val != 0.0,
             blacks_val != 0.0
         ])
+        has_curve_changes = any(len(pts) != 2 or pts != [(0.0, 0.0), (1.0, 1.0)] for pts in curve_points.values())
 
-        updated_preview = self.engine.update_pipeline(pipeline, is_modified=has_changes)
+        updated_preview = self.engine.update_pipeline(pipeline, is_modified=(has_general_changes or has_curve_changes))
         self.canvas.set_numpy_image(updated_preview)
 
     def _handle_export(self) -> None:
