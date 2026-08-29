@@ -4,7 +4,7 @@ from typing import List, Optional
 import numpy as np
 import cv2
 
-from filters import ImageFilter
+from src.filters import ImageFilter
 from src.raw_loader import RawLoader
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - [%(levelname)s] - %(message)s")
@@ -17,7 +17,7 @@ class ImageEngine:
         self._raw_path: Optional[str] = None
         self._preview_base: Optional[np.ndarray] = None
         self._current_preview: Optional[np.ndarray] = None
-        self._filters: List[ImageFilter] = []
+        self._filters: List[filters.base.ImageFilter] = []
         self._is_modified: bool = False
 
     @property
@@ -46,7 +46,7 @@ class ImageEngine:
         self._is_modified = False
         return True
 
-    def update_pipeline(self, filters: List[ImageFilter], is_modified: bool = True) -> Optional[np.ndarray]:
+    def update_pipeline(self, filters: List[filters.base.ImageFilter], is_modified: bool = True) -> Optional[np.ndarray]:
         """Applies a new list of filters to the preview base image."""
         if self._preview_base is None:
             return None

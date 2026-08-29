@@ -2,8 +2,9 @@ from typing import Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QFont, QMouseEvent, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QBrush, QColor, QMouseEvent, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QPushButton, QVBoxLayout, QWidget
+from src.utils import clamp, interpolate_curve_points
 
 
 class CurveCanvas(QWidget):
@@ -41,22 +42,18 @@ class CurveCanvas(QWidget):
             self.update()
 
     def set_histogram(self, image: Optional[np.ndarray]) -> None:
-        """Computes histogram bins [0..255] for RGB/Luma channels."""
         if image is None or image.size == 0:
             self._histogram_data = None
             self.update()
             return
 
         hist_data = {}
-        # Luma / Gray
         gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
         hist_data["RGB"] = cv2.calcHist([gray], [0], None, [256], [0, 256]).flatten()
 
-        # Channels
         for idx, ch in enumerate(["R", "G", "B"]):
             hist_data[ch] = cv2.calcHist([image], [idx], None, [256], [0, 256]).flatten()
 
-        # Normalize histograms to [0, 1] relative to maximum
         for k in hist_data:
             max_val = np.max(hist_data[k])
             if max_val > 0:
@@ -67,6 +64,12 @@ class CurveCanvas(QWidget):
 
     def get_all_points(self) -> Dict[str, List[Tuple[float, float]]]:
         return self._points
+
+    def is_modified(self) -> bool:
+        return any(
+            len(pts) != 2 or pts != [(0.0, 0.0), (1.0, 1.0)]
+            for pts in self._points.values()
+        )
 
     def reset_active_curve(self) -> None:
         self._points[self._active_channel] = [(0.0, 0.0), (1.0, 1.0)]
@@ -89,7 +92,7 @@ class CurveCanvas(QWidget):
     def _to_normalized_coords(self, pos: QPointF, rect: QRectF) -> Tuple[float, float]:
         norm_x = (pos.x() - rect.left()) / rect.width()
         norm_y = (rect.bottom() - pos.y()) / rect.height()
-        return max(0.0, min(1.0, norm_x)), max(0.0, min(1.0, norm_y))
+        return clamp(norm_x, 0.0, 1.0), clamp(norm_y, 0.0, 1.0)
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
@@ -102,7 +105,7 @@ class CurveCanvas(QWidget):
         painter.fillRect(self.rect(), QColor("#1c1c1c"))
         painter.fillRect(rect, QColor("#121212"))
 
-        # Grid lines (4x4)
+        # Grid lines
         grid_pen = QPen(QColor("#2c2c2c"), 1, Qt.PenStyle.DashLine)
         painter.setPen(grid_pen)
         for i in range(1, 4):
@@ -111,11 +114,11 @@ class CurveCanvas(QWidget):
             painter.drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()))
             painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
 
-        # Diagonal baseline
+        # Baseline
         painter.setPen(QPen(QColor("#383838"), 1, Qt.PenStyle.SolidLine))
         painter.drawLine(rect.bottomLeft(), rect.topRight())
 
-        # Render Background Histogram
+        # Histogram
         if self._histogram_data and self._active_channel in self._histogram_data:
             hist = self._histogram_data[self._active_channel]
             color = self.CHANNEL_COLORS[self._active_channel]
@@ -127,40 +130,30 @@ class CurveCanvas(QWidget):
             hist_path.moveTo(rect.bottomLeft())
             for idx, val in enumerate(hist):
                 bin_x = rect.left() + (idx / 255.0) * rect.width()
-                bin_y = rect.bottom() - (val * rect.height() * 0.85)  # scale slightly below ceiling
+                bin_y = rect.bottom() - (val * rect.height() * 0.85)
                 hist_path.lineTo(bin_x, bin_y)
             hist_path.lineTo(rect.bottomRight())
             hist_path.closeSubpath()
             painter.drawPath(hist_path)
 
-        # Render Curve Lines
+        # Interpolated Curve Drawing
         active_color = self.CHANNEL_COLORS[self._active_channel]
-        pts = sorted(self._points[self._active_channel], key=lambda p: p[0])
-
-        x_pts = np.array([p[0] * 255.0 for p in pts], dtype=np.float32)
-        y_pts = np.array([p[1] * 255.0 for p in pts], dtype=np.float32)
-        if x_pts[0] > 0:
-            x_pts = np.insert(x_pts, 0, 0.0)
-            y_pts = np.insert(y_pts, 0, y_pts[0])
-        if x_pts[-1] < 255:
-            x_pts = np.append(x_pts, 255.0)
-            y_pts = np.append(y_pts, y_pts[-1])
-
-        x_eval = np.linspace(0, 255, 128)
-        y_eval = np.interp(x_eval, x_pts, y_pts)
+        pts = self._points[self._active_channel]
+        samples = 128
+        y_eval = interpolate_curve_points(pts, num_samples=samples)
 
         curve_path = QPainterPath()
-        start_pt = self._to_screen_coords((x_eval[0] / 255.0, y_eval[0] / 255.0), rect)
+        start_pt = self._to_screen_coords((0.0, y_eval[0] / 255.0), rect)
         curve_path.moveTo(start_pt)
-        for i in range(1, len(x_eval)):
-            pt = self._to_screen_coords((x_eval[i] / 255.0, y_eval[i] / 255.0), rect)
+        for i in range(1, samples):
+            pt = self._to_screen_coords((i / float(samples - 1), y_eval[i] / 255.0), rect)
             curve_path.lineTo(pt)
 
         painter.setPen(QPen(active_color, 2))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(curve_path)
 
-        # Render Control Points
+        # Control Points
         for idx, pt in enumerate(pts):
             screen_pt = self._to_screen_coords(pt, rect)
             is_selected = idx == self._selected_pt_idx
@@ -183,8 +176,6 @@ class CurveCanvas(QWidget):
         norm_x, norm_y = self._to_normalized_coords(event.position(), rect)
 
         pts = self._points[self._active_channel]
-
-        # Check if an existing point was clicked
         hit_radius = 8.0
         clicked_idx = None
         for idx, pt in enumerate(pts):
@@ -197,7 +188,6 @@ class CurveCanvas(QWidget):
         if clicked_idx is not None:
             self._selected_pt_idx = clicked_idx
         else:
-            # Add new control point (limit to maximum 8 points per channel)
             if len(pts) < 8:
                 pts.append((norm_x, norm_y))
                 pts.sort(key=lambda p: p[0])
@@ -213,26 +203,22 @@ class CurveCanvas(QWidget):
         margin = 10
         rect = QRectF(margin, margin, self.width() - 2 * margin, self.height() - 2 * margin)
         norm_x, norm_y = self._to_normalized_coords(event.position(), rect)
-
         pts = self._points[self._active_channel]
 
-        # Pin endpoints x-coordinates to 0.0 and 1.0
         if self._selected_pt_idx == 0:
             norm_x = 0.0
         elif self._selected_pt_idx == len(pts) - 1:
             norm_x = 1.0
         else:
-            # Keep ordered between neighbors
             min_x = pts[self._selected_pt_idx - 1][0] + 0.02
             max_x = pts[self._selected_pt_idx + 1][0] - 0.02
-            norm_x = max(min_x, min(max_x, norm_x))
+            norm_x = clamp(norm_x, min_x, max_x)
 
         pts[self._selected_pt_idx] = (norm_x, norm_y)
         self.update()
         self.curveChanged.emit()
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
-        """Resets the currently active channel curve on double click."""
         if event.button() == Qt.MouseButton.LeftButton:
             self.reset_active_curve()
             event.accept()
