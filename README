@@ -6,11 +6,13 @@ A small desktop photo editor for RAW images built with Python, PySide6, OpenCV, 
 
 - Open RAW files and preview them quickly
 - Adjust exposure, contrast, highlights, shadows, whites, and blacks
-- Fine-tune tonal curves
+- Fine-tune tonal curves with option to select between smooth spline or linear interpolation
 - Pan and zoom the image while editing
 - Export the final result as a JPEG
 
 ## Quick start
+
+Make sure you are in root folder (pic-edit folder)
 
 1. Install dependencies:
    ```bash
@@ -29,17 +31,33 @@ The app uses LibRaw via rawpy, so it can work with common RAW formats such as CR
 
 ```text
 pic-edit/
+├── .gitignore
 ├── main.py
+├── README.md
 ├── requirements.txt
-├── README
-├── src/
-│   ├── engine.py
-│   ├── raw_loader.py
-│   ├── ui_main.py
-│   ├── curve_widget.py
-│   ├── collapsible_section.py
-│   └── filters/
-│       ├── general/
-│       └── curves/
-└── ...
+└── src/
+    ├── __init__.py
+    ├── collapsible_section.py
+    ├── curve_widget.py
+    ├── engine.py
+    ├── raw_loader.py
+    ├── ui_main.py
+    ├── filters/
+    │   ├── __init__.py
+    │   ├── base.py
+    │   ├── curves/
+    │   │   ├── __init__.py
+    │   │   └── curves_filter.py
+    │   └── general/
+    │       ├── __init__.py
+    │       └── tone_adjustments.py
+    ├── utils/
+    │   ├── __init__.py
+    │   └── curve_math.py
+    └── widgets/
+        ├── __init__.py
+        ├── base_section.py
+        ├── curves_section.py
+        ├── general_section.py
+        └── labeled_slider.py
 ```
