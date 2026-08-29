@@ -39,6 +39,7 @@ pic-edit/
     ├── __init__.py
     ├── collapsible_section.py
     ├── curve_widget.py
+    ├── editor_controller.py
     ├── engine.py
     ├── raw_loader.py
     ├── ui_main.py
@@ -53,11 +54,14 @@ pic-edit/
     │       └── tone_adjustments.py
     ├── utils/
     │   ├── __init__.py
-    │   └── curve_math.py
+    │   ├── curve_math.py
+    │   └── dialogs.py
     └── widgets/
         ├── __init__.py
         ├── base_section.py
         ├── curves_section.py
         ├── general_section.py
-        └── labeled_slider.py
+        ├── image_canvas.py
+        ├── labeled_slider.py
+        └── sidebar.py
 ```
