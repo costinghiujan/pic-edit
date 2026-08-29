@@ -1,19 +1,17 @@
-from typing import Dict
-from PySide6.QtCore import Signal
+from typing import Dict, Optional
 from PySide6.QtWidgets import QWidget
-from src.collapsible_section import CollapsibleSection
+
+from src.widgets.base_section import BaseSection
 from src.widgets.labeled_slider import LabeledSlider
 from src.filters.general import ToneAdjustmentsFilter
 
 
-class GeneralSection(CollapsibleSection):
-    """Encapsulates all standard tonal sliders into a clean collapsible panel."""
+class GeneralSection(BaseSection):
+    """Collapsible section housing the tone adjustment sliders."""
 
-    adjustmentsChanged = Signal()
-
-    def __init__(self, parent: QWidget = None):
-        super().__init__(title="General", on_reset=self.reset_adjustments, parent=parent)
+    def __init__(self, parent: Optional[QWidget] = None):
         self._sliders: Dict[str, LabeledSlider] = {}
+        super().__init__(title="General", parent=parent)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -32,7 +30,9 @@ class GeneralSection(CollapsibleSection):
             self._sliders[key] = slider
             self.add_widget(slider)
 
-    def get_filter(self) -> ToneAdjustmentsFilter:
+    def get_filter(self) -> Optional[ToneAdjustmentsFilter]:
+        if not self.has_modifications():
+            return None
         return ToneAdjustmentsFilter(
             exposure_ev=self._sliders["exposure"].value,
             contrast_factor=1.0 + self._sliders["contrast"].value,

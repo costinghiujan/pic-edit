@@ -25,6 +25,7 @@ class CurveCanvas(QWidget):
         self.setCursor(Qt.CursorShape.CrossCursor)
 
         self._active_channel = "RGB"
+        self._curve_mode = "smooth"
         self._points: Dict[str, List[Tuple[float, float]]] = {
             "RGB": [(0.0, 0.0), (1.0, 1.0)],
             "R": [(0.0, 0.0), (1.0, 1.0)],
@@ -40,6 +41,15 @@ class CurveCanvas(QWidget):
             self._active_channel = channel
             self._selected_pt_idx = None
             self.update()
+
+    def set_curve_mode(self, mode: str) -> None:
+        if mode in ("smooth", "linear") and self._curve_mode != mode:
+            self._curve_mode = mode
+            self.update()
+            self.curveChanged.emit()
+
+    def get_curve_mode(self) -> str:
+        return self._curve_mode
 
     def set_histogram(self, image: Optional[np.ndarray]) -> None:
         if image is None or image.size == 0:
@@ -136,11 +146,11 @@ class CurveCanvas(QWidget):
             hist_path.closeSubpath()
             painter.drawPath(hist_path)
 
-        # Interpolated Curve Drawing
+        # Render Smooth/Linear Curve
         active_color = self.CHANNEL_COLORS[self._active_channel]
         pts = self._points[self._active_channel]
         samples = 128
-        y_eval = interpolate_curve_points(pts, num_samples=samples)
+        y_eval = interpolate_curve_points(pts, num_samples=samples, mode=self._curve_mode)
 
         curve_path = QPainterPath()
         start_pt = self._to_screen_coords((0.0, y_eval[0] / 255.0), rect)
@@ -225,7 +235,7 @@ class CurveCanvas(QWidget):
 
 
 class CurveEditorWidget(QWidget):
-    """Container widget pairing channel buttons with the CurveCanvas."""
+    """Container widget pairing channel buttons, mode toggle, and the CurveCanvas."""
 
     curveChanged = Signal()
 
@@ -235,10 +245,9 @@ class CurveEditorWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
-        # Channel Selector Buttons (RGB, R, G, B)
+        # 1. Channel Selector Buttons (RGB, R, G, B)
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(4)
-
         self.btn_group = QButtonGroup(self)
         self.btn_group.setExclusive(True)
 
@@ -270,16 +279,54 @@ class CurveEditorWidget(QWidget):
 
         layout.addLayout(btn_layout)
 
-        # Canvas
+        # 2. Canvas
         self.canvas = CurveCanvas(self)
         self.canvas.curveChanged.connect(self.curveChanged.emit)
         layout.addWidget(self.canvas)
+
+        # 3. Interpolation Mode Toggle (Smooth / Linear)
+        mode_layout = QHBoxLayout()
+        mode_layout.setSpacing(4)
+        self.mode_group = QButtonGroup(self)
+        self.mode_group.setExclusive(True)
+
+        for mode_key, mode_label in [("smooth", "Smooth Spline"), ("linear", "Linear")]:
+            btn = QPushButton(mode_label, self)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #262626;
+                    color: #999999;
+                    font-size: 11px;
+                    border: 1px solid #383838;
+                    border-radius: 3px;
+                    padding: 3px 6px;
+                }
+                QPushButton:checked {
+                    background-color: #383838;
+                    color: #ffffff;
+                    font-weight: bold;
+                    border: 1px solid #555555;
+                }
+            """)
+            if mode_key == "smooth":
+                btn.setChecked(True)
+
+            btn.clicked.connect(lambda _, m=mode_key: self.canvas.set_curve_mode(m))
+            self.mode_group.addButton(btn)
+            mode_layout.addWidget(btn)
+
+        layout.addLayout(mode_layout)
 
     def set_histogram_image(self, image: Optional[np.ndarray]) -> None:
         self.canvas.set_histogram(image)
 
     def get_points(self) -> Dict[str, List[Tuple[float, float]]]:
         return self.canvas.get_all_points()
+
+    def get_mode(self) -> str:
+        return self.canvas.get_curve_mode()
 
     def reset(self) -> None:
         self.canvas.reset_all_curves()

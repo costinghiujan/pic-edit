@@ -8,7 +8,11 @@ from src.utils import interpolate_curve_points
 class CurvesFilter(ImageFilter):
     """Applies RGB and per-channel curve transformations using precomputed LUTs."""
 
-    def __init__(self, channel_points: Optional[Dict[str, List[Tuple[float, float]]]] = None):
+    def __init__(
+        self, 
+        channel_points: Optional[Dict[str, List[Tuple[float, float]]]] = None,
+        mode: str = "smooth"
+    ):
         default_pts = [(0.0, 0.0), (1.0, 1.0)]
         self.points = {
             "RGB": channel_points.get("RGB", default_pts) if channel_points else default_pts,
@@ -16,12 +20,12 @@ class CurvesFilter(ImageFilter):
             "G": channel_points.get("G", default_pts) if channel_points else default_pts,
             "B": channel_points.get("B", default_pts) if channel_points else default_pts,
         }
+        self.mode = mode
 
     def apply(self, image: np.ndarray) -> np.ndarray:
         if image is None or image.size == 0:
             raise ValueError("Invalid image buffer provided to CurvesFilter.")
 
-        # If all curves are default diagonal [(0,0), (1,1)], return original
         is_default = all(
             len(pts) == 2 and pts[0] == (0.0, 0.0) and pts[1] == (1.0, 1.0)
             for pts in self.points.values()
@@ -29,10 +33,10 @@ class CurvesFilter(ImageFilter):
         if is_default:
             return image
 
-        lut_rgb = interpolate_curve_points(self.points["RGB"], num_samples=256)
-        lut_r = interpolate_curve_points(self.points["R"], num_samples=256)
-        lut_g = interpolate_curve_points(self.points["G"], num_samples=256)
-        lut_b = interpolate_curve_points(self.points["B"], num_samples=256)
+        lut_rgb = interpolate_curve_points(self.points["RGB"], num_samples=256, mode=self.mode)
+        lut_r = interpolate_curve_points(self.points["R"], num_samples=256, mode=self.mode)
+        lut_g = interpolate_curve_points(self.points["G"], num_samples=256, mode=self.mode)
+        lut_b = interpolate_curve_points(self.points["B"], num_samples=256, mode=self.mode)
 
         final_lut_r = lut_r[lut_rgb]
         final_lut_g = lut_g[lut_rgb]
