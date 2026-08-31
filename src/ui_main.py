@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QApplication, QHBoxLayout, QMainWindow, QWidget
 
 from src.editor_controller import EditorController
 from src.engine import ImageEngine
-from src.widgets import ImageCanvas, Sidebar
+from src.widgets import ActivityBar, ImageCanvas, Sidebar
 
 
 class MainWindow(QMainWindow):
@@ -16,6 +16,7 @@ class MainWindow(QMainWindow):
 
         # Core Components
         self.engine = ImageEngine()
+        self.activity_bar = ActivityBar(self)
         self.canvas = ImageCanvas(self)
         self.sidebar = Sidebar(self)
 
@@ -54,11 +55,23 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
 
         main_layout = QHBoxLayout(central_widget)
-        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setContentsMargins(10, 10, 0, 10)
         main_layout.setSpacing(10)
 
+        # 1. Main Viewport Canvas (Left)
         main_layout.addWidget(self.canvas, stretch=4)
+
+        # 2. Stacked Sidebar Panel (Middle-Right)
         main_layout.addWidget(self.sidebar, stretch=1)
+
+        # 3. Activity Bar (Rightmost)
+        main_layout.addWidget(self.activity_bar)
+
+        # Connect tab switching
+        self.activity_bar.tabChanged.connect(self.sidebar.set_current_tab)
+
+        # Switch tabs via activity bar through controller
+        self.activity_bar.tabChanged.connect(self.controller.set_workspace_tab)
 
     def _on_import(self) -> None:
         if self.controller.import_image():

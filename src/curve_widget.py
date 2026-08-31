@@ -52,25 +52,21 @@ class CurveCanvas(QWidget):
         return self._curve_mode
 
     def set_histogram(self, image: Optional[np.ndarray]) -> None:
-        """Computes histogram bins [0..255] dynamically with stride sampling for high FPS."""
         if image is None or image.size == 0:
             self._histogram_data = None
             self.update()
             return
 
-        # Subsample image (every 2nd pixel) for sub-millisecond histogram computation
-        sample = image[::2, ::2]
+        # Subsample and ensure contiguous memory for OpenCV calcHist
+        sample = np.ascontiguousarray(image[::2, ::2])
 
         hist_data = {}
-        # Luma channel (RGB)
         gray = cv2.cvtColor(sample, cv2.COLOR_RGB2GRAY)
         hist_data["RGB"] = cv2.calcHist([gray], [0], None, [256], [0, 256]).flatten()
 
-        # Individual R, G, B channels
         for idx, ch in enumerate(["R", "G", "B"]):
             hist_data[ch] = cv2.calcHist([sample], [idx], None, [256], [0, 256]).flatten()
 
-        # Normalize to [0, 1]
         for k in hist_data:
             max_val = np.max(hist_data[k])
             if max_val > 0:
